@@ -1,9 +1,8 @@
-import requests
+import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 import pandas as pd
 
 from custom_error import FetchDataNotFoundError, EarthQuakeDataNotFound
-
 
 
 class EarthquakeFetcher:
@@ -52,13 +51,16 @@ class EarthquakeFetcher:
         
     @retry(stop=stop_after_attempt(NUM_OF_ATTEMPTS), 
            wait=wait_exponential(multiplier=1, min=MIN_SECS_TO_WAIT, max=MAX_SECS_TO_WAIT))
-    def fetch_data(self) -> None:
+    async def fetch_data(self) -> None:
         """
-        Fetches data from the specified URL and stores it in the local cache.
+        Asynchronously fetches data from the specified URL and stores it in the local cache.
 
         This method uses an exponential backoff retry mechanism. If fetching the data fails 
         on the first attempt, it retries up to `NUM_OF_ATTEMPTS` times, waiting between 
         `MIN_SECS_TO_WAIT` and `MAX_SECS_TO_WAIT` seconds between attempts.
+
+        The method is asynchronous, allowing other tasks to proceed while waiting for the 
+        HTTP request to complete.
 
         If all attempts fail, the method raises a `requests.exceptions.RequestException`.
 
@@ -67,14 +69,16 @@ class EarthquakeFetcher:
         """
         if self.cache is None:
             try:
-                response = requests.get(self.url)
-                response.raise_for_status()  
-                self.cache = response.json()  
-            except requests.exceptions.RequestException as e:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(self.url)
+                    response.raise_for_status()  
+                    self.cache = response.json() 
+            except httpx.RequestError as e:
                 print(f"Request failed: {e}")
                 raise  # Re-raise the exception to trigger retry
         else:
             print("getting from cache...")
+
     
     def get_earthquake_data(self, num_of_rows_to_retrieve:int = 10) -> pd.DataFrame:
         """
